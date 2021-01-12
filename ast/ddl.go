@@ -26,15 +26,18 @@ import (
 var (
 	_ DDLNode = &AlterTableStmt{}
 	_ DDLNode = &AlterSequenceStmt{}
+	_ DDLNode = &AlterEventStmt{}
 	_ DDLNode = &CreateDatabaseStmt{}
 	_ DDLNode = &CreateIndexStmt{}
 	_ DDLNode = &CreateTableStmt{}
 	_ DDLNode = &CreateViewStmt{}
 	_ DDLNode = &CreateSequenceStmt{}
+	_ DDLNode = &CreateEventStmt{}
 	_ DDLNode = &DropDatabaseStmt{}
 	_ DDLNode = &DropIndexStmt{}
 	_ DDLNode = &DropTableStmt{}
 	_ DDLNode = &DropSequenceStmt{}
+	_ DDLNode = &DropEventStmt{}
 	_ DDLNode = &RenameTableStmt{}
 	_ DDLNode = &TruncateTableStmt{}
 	_ DDLNode = &RepairTableStmt{}
@@ -1268,16 +1271,8 @@ func (n *CreateViewStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord(n.Algorithm.String())
 	ctx.WriteKeyWord(" DEFINER")
 	ctx.WritePlain(" = ")
-
-	// todo Use n.Definer.Restore(ctx) to replace this part
-	if n.Definer.CurrentUser {
-		ctx.WriteKeyWord("current_user")
-	} else {
-		ctx.WriteName(n.Definer.Username)
-		if n.Definer.Hostname != "" {
-			ctx.WritePlain("@")
-			ctx.WriteName(n.Definer.Hostname)
-		}
+	if err := n.Definer.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateViewStmt.Definer")
 	}
 
 	ctx.WriteKeyWord(" SQL SECURITY ")
@@ -3649,4 +3644,380 @@ func (n *AlterSequenceStmt) Accept(v Visitor) (Node, bool) {
 	}
 	n.Name = node.(*TableName)
 	return v.Leave(n)
+}
+
+type EventEnableType uint8
+type EventInstanceType uint8
+type EventSpecifiedOptionType uint32
+
+const (
+	EventEnabled EventEnableType = iota
+	EventDisabled
+	EventSlaveSideDisabled
+
+	EventInstanceAny = iota
+	EventInstanceCurrentOnly
+	EventInstancePlacementConstraints
+
+	EventSpecifiedOptionPreserve = 1 << iota
+	EventSpecifiedOptionInstance
+	EventSpecifiedOptionEnabled
+	EventSpecifiedOptionComment
+	EventSpecifiedOptionSchedule
+	EventSpecifiedOptionRenameTo
+)
+
+type EventSchedule struct {
+	IntervalValue ExprNode
+	IntervalUnit  TimeUnitType
+	Starts        ExprNode
+	Ends          ExprNode
+}
+
+func (e EventEnableType) String() string {
+	switch e {
+	case EventDisabled:
+		return "DISABLE"
+	case EventEnabled:
+		return "ENABLE"
+	case EventSlaveSideDisabled:
+		return "DISABLE ON SLAVE"
+	default:
+		return ""
+	}
+}
+
+func (schedule *EventSchedule) acceptInPlace(v Visitor) bool {
+	if schedule.IntervalValue != nil {
+		node, ok := schedule.IntervalValue.Accept(v)
+		if !ok {
+			return false
+		}
+		schedule.IntervalValue = node.(ExprNode)
+	}
+
+	if schedule.Starts != nil {
+		node, ok := schedule.Starts.Accept(v)
+		if !ok {
+			return false
+		}
+		schedule.Starts = node.(ExprNode)
+	}
+
+	if schedule.Ends != nil {
+		node, ok := schedule.Ends.Accept(v)
+		if !ok {
+			return false
+		}
+		schedule.Ends = node.(ExprNode)
+	}
+
+	return true
+}
+
+func (schedule *EventSchedule) Restore(ctx *format.RestoreCtx) error {
+	if schedule.IntervalValue != nil {
+		ctx.WriteKeyWord("EVERY ")
+		if err := schedule.IntervalValue.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while restore EventSchedule.IntervalValue")
+		}
+		ctx.WritePlain(" ")
+		ctx.WriteKeyWord(schedule.IntervalUnit.String())
+		if schedule.Starts != nil {
+			ctx.WriteKeyWord(" STARTS ")
+			if err := schedule.Starts.Restore(ctx); err != nil {
+				return errors.Annotate(err, "An error occurred while restore EventSchedule.Starts")
+			}
+		}
+		if schedule.Ends != nil {
+			ctx.WriteKeyWord(" ENDS ")
+			if err := schedule.Ends.Restore(ctx); err != nil {
+				return errors.Annotate(err, "An error occurred while restore EventSchedule.Ends")
+			}
+		}
+	} else {
+		ctx.WriteKeyWord("AT ")
+		if err := schedule.Starts.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while restore EventSchedule.Starts")
+		}
+	}
+	return nil
+}
+
+type EventOptions struct {
+	Specified EventSpecifiedOptionType
+
+	Preserve                     bool
+	Enabled                      EventEnableType
+	Instance                     EventInstanceType
+	InstancePlacementConstraints string
+	Comment                      string
+
+	Schedule EventSchedule
+	RenameTo *TableName
+}
+
+func (opt *EventOptions) Merge(other *EventOptions) {
+	opt.Specified |= other.Specified
+	if other.Specified&EventSpecifiedOptionPreserve != 0 {
+		opt.Preserve = other.Preserve
+	}
+	if other.Specified&EventSpecifiedOptionInstance != 0 {
+		opt.Instance = other.Instance
+		opt.InstancePlacementConstraints = other.InstancePlacementConstraints
+	}
+	if other.Specified&EventSpecifiedOptionEnabled != 0 {
+		opt.Enabled = other.Enabled
+	}
+	if other.Specified&EventSpecifiedOptionComment != 0 {
+		opt.Comment = other.Comment
+	}
+	if other.Specified&EventSpecifiedOptionSchedule != 0 {
+		opt.Schedule = other.Schedule
+	}
+	if other.Specified&EventSpecifiedOptionRenameTo != 0 {
+		opt.RenameTo = other.RenameTo
+	}
+}
+
+func (opt *EventOptions) Restore(ctx *format.RestoreCtx) error {
+	needSpace := false
+
+	if opt.Specified&EventSpecifiedOptionSchedule != 0 {
+		ctx.WriteKeyWord("ON SCHEDULE ")
+		if err := opt.Schedule.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while restore EventOptions.Schedule")
+		}
+		needSpace = true
+	}
+
+	if opt.Specified&EventSpecifiedOptionInstance != 0 {
+		if needSpace {
+			ctx.WritePlain(" ")
+		}
+		switch opt.Instance {
+		case EventInstanceAny:
+			ctx.WriteKeyWord("ON ANY INSTANCE")
+		case EventInstanceCurrentOnly:
+			ctx.WriteKeyWord("ON CURRENT INSTANCE ONLY")
+		case EventInstancePlacementConstraints:
+			ctx.WriteKeyWord("CONSTRAINTS")
+			ctx.WritePlain(" = ")
+			ctx.WriteString(opt.InstancePlacementConstraints)
+		}
+		needSpace = true
+	}
+
+	if opt.Specified&EventSpecifiedOptionPreserve != 0 {
+		if needSpace {
+			ctx.WritePlain(" ")
+		}
+		if opt.Preserve {
+			ctx.WriteKeyWord("ON COMPLETION PRESERVE")
+		} else {
+			ctx.WriteKeyWord("ON COMPLETION NOT PRESERVE")
+		}
+		needSpace = true
+	}
+
+	if opt.Specified&EventSpecifiedOptionRenameTo != 0 {
+		if needSpace {
+			ctx.WritePlain(" ")
+		}
+		ctx.WriteKeyWord("RENAME TO ")
+		if err := opt.RenameTo.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while restore EventOptions.RenameTo")
+		}
+		needSpace = true
+	}
+
+	if opt.Specified&EventSpecifiedOptionEnabled != 0 {
+		if needSpace {
+			ctx.WritePlain(" ")
+		}
+		ctx.WriteKeyWord(opt.Enabled.String())
+		needSpace = true
+	}
+
+	if opt.Specified&EventSpecifiedOptionComment != 0 {
+		if needSpace {
+			ctx.WritePlain(" ")
+		}
+		ctx.WriteKeyWord("COMMENT ")
+		ctx.WriteString(opt.Comment)
+	}
+
+	return nil
+}
+
+type CreateEventStmt struct {
+	ddlNode
+
+	EventName *TableName
+	Definer   *auth.UserIdentity
+	Action    StmtNode
+	*EventOptions
+
+	OrReplace   bool
+	IfNotExists bool
+}
+
+func (n *CreateEventStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*CreateEventStmt)
+
+	node, ok := n.EventName.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.EventName = node.(*TableName)
+
+	node, ok = n.Action.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.Action = node.(StmtNode)
+
+	if !n.Schedule.acceptInPlace(v) {
+		return n, false
+	}
+
+	if n.RenameTo != nil {
+		node, ok = n.RenameTo.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.RenameTo = node.(*TableName)
+	}
+
+	return v.Leave(n)
+}
+
+func (n *CreateEventStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("CREATE ")
+	if n.OrReplace {
+		ctx.WriteKeyWord("OR REPLACE ")
+	}
+	ctx.WriteKeyWord("DEFINER")
+	ctx.WritePlain(" = ")
+	if err := n.Definer.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateEventStmt.Definer")
+	}
+	ctx.WriteKeyWord(" EVENT ")
+	if n.IfNotExists {
+		ctx.WriteKeyWord("IF NOT EXISTS ")
+	}
+	if err := n.EventName.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventName")
+	}
+	ctx.WritePlain(" ")
+	if err := n.EventOptions.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventOptions")
+	}
+	ctx.WriteKeyWord(" DO ")
+	if err := n.Action.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateEventStmt.Action")
+	}
+	return nil
+}
+
+type AlterEventStmt struct {
+	ddlNode
+
+	EventName *TableName
+	Action    StmtNode
+	*EventOptions
+}
+
+func (n *AlterEventStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*AlterEventStmt)
+
+	node, ok := n.EventName.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.EventName = node.(*TableName)
+
+	if n.Action != nil {
+		node, ok = n.Action.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.Action = node.(StmtNode)
+	}
+
+	if !n.Schedule.acceptInPlace(v) {
+		return n, false
+	}
+
+	if n.RenameTo != nil {
+		node, ok = n.RenameTo.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.RenameTo = node.(*TableName)
+	}
+
+	return v.Leave(n)
+}
+
+func (n *AlterEventStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("ALTER EVENT ")
+	if err := n.EventName.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventName")
+	}
+	if n.Specified != 0 {
+		ctx.WritePlain(" ")
+		if err := n.EventOptions.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventOptions")
+		}
+	}
+	if n.Action != nil {
+		ctx.WriteKeyWord(" DO ")
+		if err := n.Action.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while create CreateEventStmt.Action")
+		}
+	}
+	return nil
+}
+
+type DropEventStmt struct {
+	ddlNode
+
+	EventName *TableName
+	IfExists  bool
+}
+
+func (n *DropEventStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*DropEventStmt)
+
+	node, ok := n.EventName.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.EventName = node.(*TableName)
+
+	return v.Leave(n)
+}
+
+func (n *DropEventStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("DROP EVENT ")
+	if n.IfExists {
+		ctx.WriteKeyWord("IF EXISTS ")
+	}
+	if err := n.EventName.Restore(ctx); err != nil {
+		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventName")
+	}
+	return nil
 }

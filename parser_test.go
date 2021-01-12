@@ -108,7 +108,7 @@ func (s *testParserSuite) TestSimple(c *C) {
 		"max_connections_per_hour", "max_queries_per_hour", "max_updates_per_hour", "max_user_connections", "event", "reload", "routine", "temporary",
 		"following", "preceding", "unbounded", "respect", "nulls", "current", "last", "against", "expansion",
 		"chain", "error", "general", "nvarchar", "pack_keys", "parser", "shard_row_id_bits", "pre_split_regions",
-		"constraints", "role", "replicas", "policy", "s3",
+		"constraints", "role", "replicas", "policy", "s3", "at", "completion", "ends", "every", "preserve", "schedule", "starts",
 	}
 	for _, kw := range unreservedKws {
 		src := fmt.Sprintf("SELECT %s FROM tbl;", kw)
@@ -5819,3 +5819,108 @@ func (s *testParserSuite) TestHighNotPrecedenceMode(c *C) {
 	restoreSQL = sb.String()
 	c.Assert(restoreSQL, Equals, "SELECT !1 BETWEEN -5 AND 5")
 }
+
+func (s *testParserSuite) TestEventStatements(c *C) {
+	table := []testCase{
+		{
+			"create event myevent on schedule at current_timestamp + interval 1 hour do update myschema.mytable set mycol = mycol + 1",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `myevent` ON SCHEDULE AT DATE_ADD(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) DO UPDATE `myschema`.`mytable` SET `mycol`=`mycol`+1",
+		},
+		{
+			"CREATE EVENT e_totals ON SCHEDULE AT '2006-02-10 23:59:00' DO INSERT INTO test.totals VALUES (NOW())",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e_totals` ON SCHEDULE AT _UTF8MB4'2006-02-10 23:59:00' DO INSERT INTO `test`.`totals` VALUES (NOW())",
+		},
+		{
+			"create event e on schedule every 12 hour starts current_timestamp + interval 30 minute ends current_timestamp + interval '6:15' hour_minute do do 1",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE EVERY 12 HOUR STARTS DATE_ADD(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE) ENDS DATE_ADD(CURRENT_TIMESTAMP(), INTERVAL _UTF8MB4'6:15' HOUR_MINUTE) DO DO 1",
+		},
+		{
+			"CREATE EVENT e_hourly ON SCHEDULE EVERY 1 HOUR COMMENT 'Clears out sessions table each hour.' DO DELETE FROM site_activity.sessions",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e_hourly` ON SCHEDULE EVERY 1 HOUR COMMENT 'Clears out sessions table each hour.' DO DELETE FROM `site_activity`.`sessions`",
+		},
+		{
+			"CREATE EVENT e_call_myproc ON SCHEDULE AT CURRENT_TIMESTAMP + INTERVAL 1 DAY DO CALL myproc(5, 27)",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e_call_myproc` ON SCHEDULE AT DATE_ADD(CURRENT_TIMESTAMP(), INTERVAL 1 DAY) DO CALL `myproc`(5, 27)",
+		},
+		{
+			"CREATE EVENT example ON SCHEDULE AT CURRENT_TIMESTAMP + INTERVAL 1 DAY + INTERVAL 3 HOUR DO DO something",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `example` ON SCHEDULE AT DATE_ADD(DATE_ADD(CURRENT_TIMESTAMP(), INTERVAL 1 DAY), INTERVAL 3 HOUR) DO DO `something`",
+		},
+		{
+			"CREATE OR REPLACE EVENT e ON SCHEDULE AT NOW() DO DO 1",
+			true,
+			"CREATE OR REPLACE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE AT NOW() DO DO 1",
+		},
+		{
+			"CREATE EVENT IF NOT EXISTS e ON SCHEDULE AT NOW() DO DO 1",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT IF NOT EXISTS `e` ON SCHEDULE AT NOW() DO DO 1",
+		},
+		{
+			"Create Definer = 'root' Event `e` On Schedule At Now() On Current Instance Only On Completion Preserve Disable Do Truncate Table `foo`",
+			true,
+			"CREATE DEFINER = `root`@`%` EVENT `e` ON SCHEDULE AT NOW() ON CURRENT INSTANCE ONLY ON COMPLETION PRESERVE DISABLE DO TRUNCATE TABLE `foo`",
+		},
+		{
+			"create event e on schedule every 5 day constraints = '+zone=bj' enable do table report into outfile 'backup.txt'",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE EVERY 5 DAY CONSTRAINTS = '+zone=bj' ENABLE DO TABLE `report` INTO OUTFILE 'backup.txt'",
+		},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO BEGIN", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO START TRANSACTION", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO COMMIT", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO ROLLBACK", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO SAVEPOINT s", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO RELEASE SAVEPOINT s", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO PREPARE x FROM 'SELECT ?'", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO EXECUTE x USING @a", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO DEALLOCATE PREPARE x", false, ""},
+		{"CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO DROP PREPARE x", false, ""},
+		{
+			"create event e on schedule at now() do admin check table t1, t2",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE AT NOW() DO ADMIN CHECK TABLE `t1`, `t2`",
+		},
+		{
+			"create event e on schedule at now() do admin checksum table t1",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE AT NOW() DO ADMIN CHECKSUM TABLE `t1`",
+		},
+		{
+			"create event e on schedule at now() do analyze table t1",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE AT NOW() DO ANALYZE TABLE `t1`",
+		},
+		{
+			"create event e on schedule at now() do backup database * to 'local://backup/'",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE AT NOW() DO BACKUP DATABASE * TO 'local://backup/'",
+		},
+		{
+			"create event e on schedule at now() on current instance only do load data infile '/tmp/t.csv' into table t",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE AT NOW() ON CURRENT INSTANCE ONLY DO LOAD DATA INFILE '/tmp/t.csv' INTO TABLE `t`",
+		},
+
+		{"alter event e on schedule at now()", true, "ALTER EVENT `e` ON SCHEDULE AT NOW()"},
+		{"alter event e on completion preserve", true, "ALTER EVENT `e` ON COMPLETION PRESERVE"},
+		{"alter event e rename to f", true, "ALTER EVENT `e` RENAME TO `f`"},
+		{"alter event e enable", true, "ALTER EVENT `e` ENABLE"},
+		{"alter event e comment 'cmt'", true, "ALTER EVENT `e` COMMENT 'cmt'"},
+		{"alter event e do do 3", true, "ALTER EVENT `e` DO DO 3"},
+		{"alter event e disable comment 'what' do select 1", true, "ALTER EVENT `e` DISABLE COMMENT 'what' DO SELECT 1"},
+		{"drop event e", true, "DROP EVENT `e`"},
+		{"drop event if exists e", true, "DROP EVENT IF EXISTS `e`"},
+		{"show create event e", true, "SHOW CREATE EVENT `e`"},
+		{"show events", true, "SHOW EVENTS"},
+		{"show events in db like '%pat%'", true, "SHOW EVENTS IN `db` LIKE _UTF8MB4'%pat%'"},
+	}
+	s.RunTest(c, table)
+}
+

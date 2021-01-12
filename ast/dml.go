@@ -2286,6 +2286,7 @@ const (
 	ShowBackups
 	ShowRestores
 	ShowImports
+	ShowCreateEvent
 )
 
 const (
@@ -2387,6 +2388,11 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteKeyWord("CREATE SEQUENCE ")
 		if err := n.Table.Restore(ctx); err != nil {
 			return errors.Annotate(err, "An error occurred while restore ShowStmt.SEQUENCE")
+		}
+	case ShowCreateEvent:
+		ctx.WriteKeyWord("CREATE EVENT ")
+		if err := n.Table.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while restore ShowStmt.EVENT")
 		}
 	case ShowCreateUser:
 		ctx.WriteKeyWord("CREATE USER ")

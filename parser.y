@@ -296,6 +296,7 @@ import (
 	always                "ALWAYS"
 	any                   "ANY"
 	ascii                 "ASCII"
+	at                    "AT"
 	autoIdCache           "AUTO_ID_CACHE"
 	autoIncrement         "AUTO_INCREMENT"
 	autoRandom            "AUTO_RANDOM"
@@ -335,6 +336,7 @@ import (
 	commit                "COMMIT"
 	committed             "COMMITTED"
 	compact               "COMPACT"
+	completion            "COMPLETION"
 	compressed            "COMPRESSED"
 	compression           "COMPRESSION"
 	concurrency           "CONCURRENCY"
@@ -369,6 +371,7 @@ import (
 	enable                "ENABLE"
 	encryption            "ENCRYPTION"
 	end                   "END"
+	ends                  "ENDS"
 	enforced              "ENFORCED"
 	engine                "ENGINE"
 	engines               "ENGINES"
@@ -377,6 +380,7 @@ import (
 	escape                "ESCAPE"
 	event                 "EVENT"
 	events                "EVENTS"
+	every                 "EVERY"
 	evolve                "EVOLVE"
 	exchange              "EXCHANGE"
 	exclusive             "EXCLUSIVE"
@@ -488,6 +492,7 @@ import (
 	preSplitRegions       "PRE_SPLIT_REGIONS"
 	preceding             "PRECEDING"
 	prepare               "PREPARE"
+	preserve              "PRESERVE"
 	privileges            "PRIVILEGES"
 	process               "PROCESS"
 	processlist           "PROCESSLIST"
@@ -524,6 +529,7 @@ import (
 	rowFormat             "ROW_FORMAT"
 	rtree                 "RTREE"
 	san                   "SAN"
+	schedule              "SCHEDULE"
 	second                "SECOND"
 	secondaryEngine       "SECONDARY_ENGINE"
 	secondaryLoad         "SECONDARY_LOAD"
@@ -561,6 +567,7 @@ import (
 	sqlTsiWeek            "SQL_TSI_WEEK"
 	sqlTsiYear            "SQL_TSI_YEAR"
 	start                 "START"
+	starts                "STARTS"
 	statsAutoRecalc       "STATS_AUTO_RECALC"
 	statsPersistent       "STATS_PERSISTENT"
 	statsSamplePages      "STATS_SAMPLE_PAGES"
@@ -800,6 +807,8 @@ import (
 	WindowFuncCall         "WINDOW function call"
 	RepeatableOpt          "Repeatable optional in sample clause"
 	ProcedureCall          "Procedure call with Identifier or identifier"
+	StartsOpt              "optional STARTS clause in EVENT schedule"
+	EndsOpt                "optional ENDS clause in EVENT schedule"
 
 %type	<statement>
 	AdminStmt              "Check table statement or show ddl statement"
@@ -881,6 +890,11 @@ import (
 	ShutdownStmt           "SHUTDOWN statement"
 	CreateViewSelectOpt    "Select/Union/Except/Intersect statement in CREATE VIEW ... AS SELECT"
 	BindableStmt           "Statement that can be created binding on"
+	CreateEventStmt        "CREATE EVENT statement"
+	AlterEventStmt         "ALTER EVENT statement"
+	DropEventStmt          "DROP EVENT statement"
+	AsyncableStmt          "statements which can be used in CREATE EVENT"
+	EventDoOpt             "optional DO clause for events"
 
 %type	<item>
 	AdminShowSlow                          "Admin Show Slow statement"
@@ -1241,6 +1255,11 @@ import (
 	PlacementOptions                       "Placement rules options"
 	PlacementSpec                          "Placement rules specification"
 	PlacementSpecList                      "Placement rules specifications"
+	EventSchedule                          "Event schedule"
+	EventOption                            "CREATE EVENT option"
+	EventOptions                           "CREATE EVENT option list"
+	AlterEventOption                       "ALTER EVENT option"
+	AlterEventOptions                      "ALTER EVENT option list"
 
 %type	<ident>
 	AsOpt             "AS or EmptyString"
@@ -5564,6 +5583,13 @@ UnReservedKeyword:
 |	"PURGE"
 |	"SKIP"
 |	"LOCKED"
+|	"AT"
+|	"COMPLETION"
+|	"ENDS"
+|	"EVERY"
+|	"PRESERVE"
+|	"SCHEDULE"
+|	"STARTS"
 
 TiDBKeyword:
 	"ADMIN"
@@ -9466,6 +9492,13 @@ ShowStmt:
 			Table: $4.(*ast.TableName),
 		}
 	}
+|	"SHOW" "CREATE" "EVENT" TableName
+	{
+		$$ = &ast.ShowStmt{
+			Tp:    ast.ShowCreateEvent,
+			Table: $4.(*ast.TableName),
+		}
+	}
 |	"SHOW" "CREATE" "USER" Username
 	{
 		// See https://dev.mysql.com/doc/refman/5.7/en/show-create-user.html
@@ -10098,6 +10131,9 @@ Statement:
 |	UnlockTablesStmt
 |	LockTablesStmt
 |	ShutdownStmt
+|	CreateEventStmt
+|	AlterEventStmt
+|	DropEventStmt
 
 TraceableStmt:
 	DeleteFromStmt
@@ -10117,6 +10153,68 @@ ExplainableStmt:
 |	InsertIntoStmt
 |	ReplaceIntoStmt
 |	SetOprStmt1
+
+AsyncableStmt:
+	AdminStmt
+|	AlterDatabaseStmt
+|	AlterTableStmt
+|	AlterUserStmt
+|	AlterInstanceStmt
+|	AlterSequenceStmt
+|	AnalyzeTableStmt
+|	BinlogStmt
+|	BRIEStmt
+|	DeleteFromStmt
+|	ExplainStmt
+|	ChangeStmt
+|	CreateDatabaseStmt
+|	CreateIndexStmt
+|	CreateTableStmt
+|	CreateViewStmt
+|	CreateUserStmt
+|	CreateRoleStmt
+|	CreateBindingStmt
+|	CreateSequenceStmt
+|	CreateStatisticsStmt
+|	DoStmt
+|	DropDatabaseStmt
+|	DropIndexStmt
+|	DropTableStmt
+|	DropSequenceStmt
+|	DropViewStmt
+|	DropUserStmt
+|	DropRoleStmt
+|	DropStatisticsStmt
+|	DropStatsStmt
+|	DropBindingStmt
+|	FlushStmt
+|	FlashbackTableStmt
+|	GrantStmt
+|	GrantProxyStmt
+|	GrantRoleStmt
+|	CallStmt
+|	InsertIntoStmt
+|	IndexAdviseStmt
+|	KillStmt
+|	LoadDataStmt
+|	LoadStatsStmt
+|	PurgeImportStmt
+|	RenameTableStmt
+|	ReplaceIntoStmt
+|	RecoverTableStmt
+|	RevokeStmt
+|	RevokeRoleStmt
+|	SetOprStmt1
+|	SetStmt
+|	SetRoleStmt
+|	SetDefaultRoleStmt
+|	SplitRegionStmt
+|	ShowStmt
+|	TruncateTableStmt
+|	UpdateStmt
+|	UnlockTablesStmt
+|	LockTablesStmt
+|	ShutdownStmt
 
 StatementList:
 	Statement
@@ -12628,5 +12726,190 @@ RowStmt:
 	"ROW" RowValue
 	{
 		$$ = &ast.RowExpr{Values: $2.([]ast.ExprNode)}
+	}
+
+CreateEventStmt:
+	"CREATE" OrReplace ViewAlgorithm ViewDefiner "EVENT" IfNotExists TableName "ON" "SCHEDULE" EventSchedule EventOptions "DO" AsyncableStmt
+	{
+		// Note: The ViewAlgorithm is useless.
+		// it is included just to workaround a shift/reduce conflict.
+		opts := $11.(*ast.EventOptions)
+		opts.Specified |= ast.EventSpecifiedOptionSchedule
+		opts.Schedule = $10.(ast.EventSchedule)
+		$$ = &ast.CreateEventStmt{
+			EventName:    $7.(*ast.TableName),
+			Definer:      $4.(*auth.UserIdentity),
+			Action:       $13,
+			EventOptions: opts,
+			OrReplace:    $2.(bool),
+			IfNotExists:  $6.(bool),
+		}
+	}
+
+AlterEventStmt:
+	"ALTER" "EVENT" TableName AlterEventOptions EventDoOpt
+	{
+		$$ = &ast.AlterEventStmt{
+			EventName:    $3.(*ast.TableName),
+			Action:       $5,
+			EventOptions: $4.(*ast.EventOptions),
+		}
+	}
+
+DropEventStmt:
+	"DROP" "EVENT" IfExists TableName
+	{
+		$$ = &ast.DropEventStmt{
+			EventName: $4.(*ast.TableName),
+			IfExists:  $3.(bool),
+		}
+	}
+
+EventSchedule:
+	"AT" Expression
+	{
+		$$ = ast.EventSchedule{
+			Starts: $2,
+			Ends:   $2,
+		}
+	}
+|	"EVERY" Expression TimeUnit StartsOpt EndsOpt
+	{
+		$$ = ast.EventSchedule{
+			IntervalValue: $2,
+			IntervalUnit:  $3.(ast.TimeUnitType),
+			Starts:        $4,
+			Ends:          $5,
+		}
+	}
+
+StartsOpt:
+	/* empty */
+	{
+		$$ = nil
+	}
+|	"STARTS" Expression
+	{
+		$$ = $2
+	}
+
+EndsOpt:
+	/* empty */
+	{
+		$$ = nil
+	}
+|	"ENDS" Expression
+	{
+		$$ = $2
+	}
+
+EventOption:
+	"ON" "COMPLETION" "PRESERVE"
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionPreserve,
+			Preserve:  true,
+		}
+	}
+|	"ON" "COMPLETION" NotSym "PRESERVE"
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionPreserve,
+			Preserve:  false,
+		}
+	}
+|	"ON" "ANY" "INSTANCE"
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionInstance,
+			Instance:  ast.EventInstanceAny,
+		}
+	}
+|	"ON" "CURRENT" "INSTANCE" "ONLY"
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionInstance,
+			Instance:  ast.EventInstanceCurrentOnly,
+		}
+	}
+|	"CONSTRAINTS" EqOpt stringLit
+	{
+		$$ = &ast.EventOptions{
+			Specified:                    ast.EventSpecifiedOptionInstance,
+			Instance:                     ast.EventInstancePlacementConstraints,
+			InstancePlacementConstraints: $3,
+		}
+	}
+|	"ENABLE"
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionEnabled,
+			Enabled:   ast.EventEnabled,
+		}
+	}
+|	"DISABLE"
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionEnabled,
+			Enabled:   ast.EventDisabled,
+		}
+	}
+|	"COMMENT" EqOpt stringLit
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionComment,
+			Comment:   $3,
+		}
+	}
+
+EventOptions:
+	/* empty */
+	{
+		$$ = &ast.EventOptions{}
+	}
+|	EventOptions EventOption
+	{
+		opt := $1.(*ast.EventOptions)
+		opt.Merge($2.(*ast.EventOptions))
+		$$ = opt
+	}
+
+AlterEventOption:
+	EventOption
+|	"ON" "SCHEDULE" EventSchedule
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionSchedule,
+			Schedule:  $3.(ast.EventSchedule),
+		}
+	}
+|	"RENAME" "TO" TableName
+	{
+		$$ = &ast.EventOptions{
+			Specified: ast.EventSpecifiedOptionRenameTo,
+			RenameTo:  $3.(*ast.TableName),
+		}
+	}
+
+AlterEventOptions:
+	/* empty */
+	{
+		$$ = &ast.EventOptions{}
+	}
+|	AlterEventOptions AlterEventOption
+	{
+		opt := $1.(*ast.EventOptions)
+		opt.Merge($2.(*ast.EventOptions))
+		$$ = opt
+	}
+
+EventDoOpt:
+	/* empty */
+	{
+		$$ = nil
+	}
+|	"DO" AsyncableStmt
+	{
+		$$ = $2
 	}
 %%

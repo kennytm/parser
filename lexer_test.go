@@ -52,7 +52,7 @@ type testCaseItem struct {
 
 func (s *testLexerSuite) TestSingleCharOther(c *C) {
 	table := []testCaseItem{
-		{"AT", identifier},
+		{"AT", at},
 		{"?", paramMarker},
 		{"PLACEHOLDER", identifier},
 		{"=", eq},
