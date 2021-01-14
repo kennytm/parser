@@ -5923,4 +5923,3 @@ func (s *testParserSuite) TestEventStatements(c *C) {
 	}
 	s.RunTest(c, table)
 }
-

@@ -3677,6 +3677,19 @@ type EventSchedule struct {
 func (e EventEnableType) String() string {
 	switch e {
 	case EventDisabled:
+		return "DISABLED"
+	case EventEnabled:
+		return "ENABLED"
+	case EventSlaveSideDisabled:
+		return "SLAVESIDE_DISABLED"
+	default:
+		return ""
+	}
+}
+
+func (e EventEnableType) Restore() string {
+	switch e {
+	case EventDisabled:
 		return "DISABLE"
 	case EventEnabled:
 		return "ENABLE"
@@ -3835,7 +3848,7 @@ func (opt *EventOptions) Restore(ctx *format.RestoreCtx) error {
 		if needSpace {
 			ctx.WritePlain(" ")
 		}
-		ctx.WriteKeyWord(opt.Enabled.String())
+		ctx.WriteKeyWord(opt.Enabled.Restore())
 		needSpace = true
 	}
 
