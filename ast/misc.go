@@ -2594,7 +2594,7 @@ type BRIEStmt struct {
 	Kind    BRIEKind
 	Schemas []string
 	Tables  []*TableName
-	Storage string
+	Storage ExprNode
 	Options []*BRIEOption
 }
 
@@ -2611,6 +2611,11 @@ func (n *BRIEStmt) Accept(v Visitor) (Node, bool) {
 		}
 		n.Tables[i] = node.(*TableName)
 	}
+	node, ok := n.Storage.Accept(v)
+	if !ok {
+		return n, false
+	}
+	n.Storage = node.(ExprNode)
 	return v.Leave(n)
 }
 
@@ -2647,7 +2652,9 @@ func (n *BRIEStmt) Restore(ctx *format.RestoreCtx) error {
 	case BRIEKindRestore, BRIEKindImport:
 		ctx.WriteKeyWord(" FROM ")
 	}
-	ctx.WriteString(n.Storage)
+	if err := n.Storage.Restore(ctx); err != nil {
+		return errors.Annotatef(err, "An error occurred while restore BRIEStmt.Storage")
+	}
 
 	for _, opt := range n.Options {
 		ctx.WritePlain(" ")
@@ -2695,18 +2702,20 @@ func (n *BRIEStmt) Restore(ctx *format.RestoreCtx) error {
 func (n *BRIEStmt) SecureText() string {
 	// FIXME: this solution is not scalable, and duplicates some logic from BR.
 	redactedStorage := n.Storage
-	u, err := url.Parse(n.Storage)
-	if err == nil {
-		if u.Scheme == "s3" {
-			query := u.Query()
-			for key := range query {
-				switch strings.ToLower(strings.ReplaceAll(key, "_", "-")) {
-				case "access-key", "secret-access-key":
-					query[key] = []string{"xxxxxx"}
+	if storageValue, ok := redactedStorage.(ValueExpr); ok {
+		u, err := url.Parse(storageValue.GetString())
+		if err == nil {
+			if u.Scheme == "s3" {
+				query := u.Query()
+				for key := range query {
+					switch strings.ToLower(strings.ReplaceAll(key, "_", "-")) {
+					case "access-key", "secret-access-key":
+						query[key] = []string{"xxxxxx"}
+					}
 				}
+				u.RawQuery = query.Encode()
+				redactedStorage = NewValueExpr(u.String(), "", "")
 			}
-			u.RawQuery = query.Encode()
-			redactedStorage = u.String()
 		}
 	}
 

@@ -4351,7 +4351,7 @@ ExplainFormatType:
  *	IMPORT TABLE [ db1.tbl1, db2.tbl2 ] FROM 'scheme://location' [ options... ]
  */
 BRIEStmt:
-	"BACKUP" BRIETables "TO" stringLit BRIEOptions
+	"BACKUP" BRIETables "TO" Expression BRIEOptions
 	{
 		stmt := $2.(*ast.BRIEStmt)
 		stmt.Kind = ast.BRIEKindBackup
@@ -4359,7 +4359,7 @@ BRIEStmt:
 		stmt.Options = $5.([]*ast.BRIEOption)
 		$$ = stmt
 	}
-|	"RESTORE" BRIETables "FROM" stringLit BRIEOptions
+|	"RESTORE" BRIETables "FROM" Expression BRIEOptions
 	{
 		stmt := $2.(*ast.BRIEStmt)
 		stmt.Kind = ast.BRIEKindRestore
@@ -4367,7 +4367,7 @@ BRIEStmt:
 		stmt.Options = $5.([]*ast.BRIEOption)
 		$$ = stmt
 	}
-|	"IMPORT" BRIETables "FROM" stringLit BRIEOptions
+|	"IMPORT" BRIETables "FROM" Expression BRIEOptions
 	{
 		stmt := $2.(*ast.BRIEStmt)
 		stmt.Kind = ast.BRIEKindImport
