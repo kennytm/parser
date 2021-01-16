@@ -628,6 +628,17 @@ func (m SQLMode) HasAllowInvalidDatesMode() bool {
 	return m&ModeAllowInvalidDates == ModeAllowInvalidDates
 }
 
+// String converts to mode to a string
+func (m SQLMode) String() string {
+	var modes []string
+	for mString, mVal := range Str2SQLMode {
+		if m&mVal == mVal {
+			modes = append(modes, mString)
+		}
+	}
+	return strings.Join(modes, ",")
+}
+
 // consts for sql modes.
 // see https://dev.mysql.com/doc/internals/en/query-event.html#q-sql-mode-code
 const (
