@@ -3866,7 +3866,8 @@ func (opt *EventOptions) Restore(ctx *format.RestoreCtx) error {
 type CreateEventStmt struct {
 	ddlNode
 
-	EventName *TableName
+	DBName    model.CIStr
+	EventName model.CIStr
 	Definer   *auth.UserIdentity
 	Action    StmtNode
 	*EventOptions
@@ -3882,13 +3883,7 @@ func (n *CreateEventStmt) Accept(v Visitor) (Node, bool) {
 	}
 	n = newNode.(*CreateEventStmt)
 
-	node, ok := n.EventName.Accept(v)
-	if !ok {
-		return n, false
-	}
-	n.EventName = node.(*TableName)
-
-	node, ok = n.Action.Accept(v)
+	node, ok := n.Action.Accept(v)
 	if !ok {
 		return n, false
 	}
@@ -3923,9 +3918,11 @@ func (n *CreateEventStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.IfNotExists {
 		ctx.WriteKeyWord("IF NOT EXISTS ")
 	}
-	if err := n.EventName.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventName")
+	if len(n.DBName.O) > 0 {
+		ctx.WriteName(n.DBName.O)
+		ctx.WritePlain(".")
 	}
+	ctx.WriteName(n.EventName.O)
 	ctx.WritePlain(" ")
 	if err := n.EventOptions.Restore(ctx); err != nil {
 		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventOptions")
@@ -3940,7 +3937,8 @@ func (n *CreateEventStmt) Restore(ctx *format.RestoreCtx) error {
 type AlterEventStmt struct {
 	ddlNode
 
-	EventName *TableName
+	DBName    model.CIStr
+	EventName model.CIStr
 	Action    StmtNode
 	*EventOptions
 }
@@ -3952,14 +3950,8 @@ func (n *AlterEventStmt) Accept(v Visitor) (Node, bool) {
 	}
 	n = newNode.(*AlterEventStmt)
 
-	node, ok := n.EventName.Accept(v)
-	if !ok {
-		return n, false
-	}
-	n.EventName = node.(*TableName)
-
 	if n.Action != nil {
-		node, ok = n.Action.Accept(v)
+		node, ok := n.Action.Accept(v)
 		if !ok {
 			return n, false
 		}
@@ -3971,7 +3963,7 @@ func (n *AlterEventStmt) Accept(v Visitor) (Node, bool) {
 	}
 
 	if n.RenameTo != nil {
-		node, ok = n.RenameTo.Accept(v)
+		node, ok := n.RenameTo.Accept(v)
 		if !ok {
 			return n, false
 		}
@@ -3983,9 +3975,11 @@ func (n *AlterEventStmt) Accept(v Visitor) (Node, bool) {
 
 func (n *AlterEventStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord("ALTER EVENT ")
-	if err := n.EventName.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventName")
+	if len(n.DBName.O) > 0 {
+		ctx.WriteName(n.DBName.O)
+		ctx.WritePlain(".")
 	}
+	ctx.WriteName(n.EventName.O)
 	if n.Specified != 0 {
 		ctx.WritePlain(" ")
 		if err := n.EventOptions.Restore(ctx); err != nil {
@@ -4004,7 +3998,8 @@ func (n *AlterEventStmt) Restore(ctx *format.RestoreCtx) error {
 type DropEventStmt struct {
 	ddlNode
 
-	EventName *TableName
+	DBName    model.CIStr
+	EventName model.CIStr
 	IfExists  bool
 }
 
@@ -4014,13 +4009,6 @@ func (n *DropEventStmt) Accept(v Visitor) (Node, bool) {
 		return v.Leave(newNode)
 	}
 	n = newNode.(*DropEventStmt)
-
-	node, ok := n.EventName.Accept(v)
-	if !ok {
-		return n, false
-	}
-	n.EventName = node.(*TableName)
-
 	return v.Leave(n)
 }
 
@@ -4029,8 +4017,10 @@ func (n *DropEventStmt) Restore(ctx *format.RestoreCtx) error {
 	if n.IfExists {
 		ctx.WriteKeyWord("IF EXISTS ")
 	}
-	if err := n.EventName.Restore(ctx); err != nil {
-		return errors.Annotate(err, "An error occurred while create CreateEventStmt.EventName")
+	if len(n.DBName.O) > 0 {
+		ctx.WriteName(n.DBName.O)
+		ctx.WritePlain(".")
 	}
+	ctx.WriteName(n.EventName.O)
 	return nil
 }

@@ -9494,9 +9494,11 @@ ShowStmt:
 	}
 |	"SHOW" "CREATE" "EVENT" TableName
 	{
+		eventName := $4.(*ast.TableName)
 		$$ = &ast.ShowStmt{
-			Tp:    ast.ShowCreateEvent,
-			Table: $4.(*ast.TableName),
+			Tp:        ast.ShowCreateEvent,
+			DBName:    eventName.Schema.O,
+			IndexName: eventName.Name,
 		}
 	}
 |	"SHOW" "CREATE" "USER" Username
@@ -12736,8 +12738,10 @@ CreateEventStmt:
 		opts := $11.(*ast.EventOptions)
 		opts.Specified |= ast.EventSpecifiedOptionSchedule
 		opts.Schedule = $10.(ast.EventSchedule)
+		eventName := $7.(*ast.TableName)
 		$$ = &ast.CreateEventStmt{
-			EventName:    $7.(*ast.TableName),
+			DBName:       eventName.Schema,
+			EventName:    eventName.Name,
 			Definer:      $4.(*auth.UserIdentity),
 			Action:       $13,
 			EventOptions: opts,
@@ -12749,8 +12753,10 @@ CreateEventStmt:
 AlterEventStmt:
 	"ALTER" "EVENT" TableName AlterEventOptions EventDoOpt
 	{
+		eventName := $3.(*ast.TableName)
 		$$ = &ast.AlterEventStmt{
-			EventName:    $3.(*ast.TableName),
+			DBName:       eventName.Schema,
+			EventName:    eventName.Name,
 			Action:       $5,
 			EventOptions: $4.(*ast.EventOptions),
 		}
@@ -12759,8 +12765,10 @@ AlterEventStmt:
 DropEventStmt:
 	"DROP" "EVENT" IfExists TableName
 	{
+		eventName := $4.(*ast.TableName)
 		$$ = &ast.DropEventStmt{
-			EventName: $4.(*ast.TableName),
+			DBName:    eventName.Schema,
+			EventName: eventName.Name,
 			IfExists:  $3.(bool),
 		}
 	}

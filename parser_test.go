@@ -5907,6 +5907,11 @@ func (s *testParserSuite) TestEventStatements(c *C) {
 			true,
 			"CREATE DEFINER = CURRENT_USER EVENT `e` ON SCHEDULE AT NOW() ON CURRENT INSTANCE ONLY DO LOAD DATA INFILE '/tmp/t.csv' INTO TABLE `t`",
 		},
+		{
+			"create event db.e on schedule at now() do do 1",
+			true,
+			"CREATE DEFINER = CURRENT_USER EVENT `db`.`e` ON SCHEDULE AT NOW() DO DO 1",
+		},
 
 		{"alter event e on schedule at now()", true, "ALTER EVENT `e` ON SCHEDULE AT NOW()"},
 		{"alter event e on completion preserve", true, "ALTER EVENT `e` ON COMPLETION PRESERVE"},
@@ -5914,10 +5919,13 @@ func (s *testParserSuite) TestEventStatements(c *C) {
 		{"alter event e enable", true, "ALTER EVENT `e` ENABLE"},
 		{"alter event e comment 'cmt'", true, "ALTER EVENT `e` COMMENT 'cmt'"},
 		{"alter event e do do 3", true, "ALTER EVENT `e` DO DO 3"},
+		{"alter event db.e do do 3", true, "ALTER EVENT `db`.`e` DO DO 3"},
 		{"alter event e disable comment 'what' do select 1", true, "ALTER EVENT `e` DISABLE COMMENT 'what' DO SELECT 1"},
 		{"drop event e", true, "DROP EVENT `e`"},
+		{"drop event db.e", true, "DROP EVENT `db`.`e`"},
 		{"drop event if exists e", true, "DROP EVENT IF EXISTS `e`"},
 		{"show create event e", true, "SHOW CREATE EVENT `e`"},
+		{"show create event db.e", true, "SHOW CREATE EVENT `db`.`e`"},
 		{"show events", true, "SHOW EVENTS"},
 		{"show events in db like '%pat%'", true, "SHOW EVENTS IN `db` LIKE _UTF8MB4'%pat%'"},
 	}

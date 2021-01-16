@@ -2312,8 +2312,8 @@ type ShowStmt struct {
 	DBName      string
 	Table       *TableName  // Used for showing columns.
 	Column      *ColumnName // Used for `desc table column`.
-	IndexName   model.CIStr
-	Flag        int // Some flag parsed from sql, such as FULL.
+	IndexName   model.CIStr // also used for event name in `show create table`
+	Flag        int         // Some flag parsed from sql, such as FULL.
 	Full        bool
 	User        *auth.UserIdentity   // Used for show grants/create user.
 	Roles       []*auth.RoleIdentity // Used for show grants .. using
@@ -2391,9 +2391,11 @@ func (n *ShowStmt) Restore(ctx *format.RestoreCtx) error {
 		}
 	case ShowCreateEvent:
 		ctx.WriteKeyWord("CREATE EVENT ")
-		if err := n.Table.Restore(ctx); err != nil {
-			return errors.Annotate(err, "An error occurred while restore ShowStmt.EVENT")
+		if len(n.DBName) > 0 {
+			ctx.WriteName(n.DBName)
+			ctx.WritePlain(".")
 		}
+		ctx.WriteName(n.IndexName.O)
 	case ShowCreateUser:
 		ctx.WriteKeyWord("CREATE USER ")
 		if err := n.User.Restore(ctx); err != nil {
